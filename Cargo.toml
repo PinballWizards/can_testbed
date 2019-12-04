@@ -1,0 +1,23 @@
+[package]
+name = "can-testbed"
+version = "0.1.0"
+authors = ["Will Tekulve <tekulve.will@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+panic-halt = "~0.2"
+cortex-m = "~0.6"
+cortex-m-semihosting = "~0.3"
+embedded-hal = "~0.2"
+nb = "~0.1"
+mcp2517fd = { git = "https://github.com/PinballWizards/mcp2517fd.git", branch = "master" }
+
+[dependencies.feather_m0]
+version = "~0.5"
+features = ["default", "unproven"]
+
+[profile.release]
+# Tell `rustc` to optimize for small code size.
+opt-level = "s"
