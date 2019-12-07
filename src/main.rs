@@ -17,8 +17,7 @@ use hal::prelude::*;
 
 use hal::entry;
 
-use embedded_hal::blocking::spi::Write;
-use embedded_hal::spi::FullDuplex;
+use embedded_hal::blocking::spi::{Transfer, Write};
 
 use mcp2517fd;
 use mcp2517fd::generic::SFRAddress;
@@ -26,9 +25,9 @@ use mcp2517fd::spi;
 
 fn setup_can<T, SS>(
     controller: &mut mcp2517fd::spi::Controller<T, SS>,
-) -> Result<(), spi::Error<<T as FullDuplex<u8>>::Error, <T as Write<u8>>::Error, u8>>
+) -> Result<(), spi::Error<<T as Transfer<u8>>::Error, <T as Write<u8>>::Error, u8>>
 where
-    T: embedded_hal::spi::FullDuplex<u8> + embedded_hal::blocking::spi::Write<u8>,
+    T: Transfer<u8> + Write<u8>,
     SS: embedded_hal::digital::v2::StatefulOutputPin,
     <SS as embedded_hal::digital::v2::OutputPin>::Error: core::fmt::Debug,
 {
@@ -45,12 +44,15 @@ where
 
     let mut iocon = controller.read_sfr(&SFRAddress::IOCON)?;
     // TRIS0/1 set GPIO0/1 as output
-    iocon |= 1 << 0;
-    iocon |= 1 << 1;
+    iocon &= !(1 << 0);
+    iocon &= !(1 << 1);
 
     // LAT0/1 set as latched
     iocon |= 1 << 8;
     iocon |= 1 << 9;
+
+    iocon |= 1 << 16;
+    iocon |= 1 << 17;
 
     // PM0/1 set as GPIO
     iocon |= 1 << 24;
@@ -98,12 +100,15 @@ fn main() -> ! {
 
     let mut controller = mcp2517fd::spi::Controller::new(master, d6);
 
-    /*match setup_can(&mut controller) {
-        Ok(_) => d11.set_high().unwrap(),
-        Err(_) => d12.set_high().unwrap(),
-    };*/
+    // match setup_can(&mut controller) {
+    //     Ok(_) => d11.set_high().unwrap(),
+    //     Err(_) => d12.set_high().unwrap(),
+    // };
 
     let mut delay = Delay::new(core.SYST, &mut clocks);
+
+    // Keeping this delay here so slave select can go high.
+    delay.delay_ms(100u32);
 
     // loop {
     //     d6.set_low().unwrap();
@@ -124,11 +129,47 @@ fn main() -> ! {
     //     delay.delay_ms(500u32);
     // }
 
+    // loop {
+    //     match controller.write_sfr(
+    //         &SFRAddress::IOCON,
+    //         0b0101_0101_0101_0101_0101_0101_0101_0101 as u32,
+    //     ) {
+    //         Ok(_) => {
+    //             d11.set_high().unwrap();
+    //             d12.set_low().unwrap();
+    //         }
+    //         Err(_) => {
+    //             d12.set_high().unwrap();
+    //             d11.set_low().unwrap();
+    //         }
+    //     }
+
+    //     delay.delay_ms(500u32);
+    //     d11.set_low().unwrap();
+    //     d12.set_low().unwrap();
+    //     delay.delay_ms(500u32);
+    // }
+
+    let data = [
+        (0b00000011_00000011_00000000_00000000 as u32),
+        (0b00000011_00000011_00000001_00000000 as u32),
+        (0b00000011_00000011_00000010_00000000 as u32),
+        (0b00000011_00000011_00000011_00000000 as u32),
+    ];
+
+    // match controller.write_sfr(&SFRAddress::IOCON, data[3]) {
+    //     Ok(_) => {
+    //         d11.set_high().unwrap();
+    //         d12.set_low().unwrap();
+    //     }
+    //     Err(_) => {
+    //         d12.set_high().unwrap();
+    //         d11.set_low().unwrap();
+    //     }
+    // };
+
     loop {
-        match controller.write_sfr(
-            &SFRAddress::IOCON,
-            0b0101_0101_0101_0101_0101_0101_0101_0101 as u32,
-        ) {
+        match controller.read_sfr(&SFRAddress::C1CON) {
             Ok(_) => {
                 d11.set_high().unwrap();
                 d12.set_low().unwrap();
@@ -139,9 +180,9 @@ fn main() -> ! {
             }
         }
 
-        delay.delay_ms(500u32);
+        delay.delay_ms(1000u32);
         d11.set_low().unwrap();
         d12.set_low().unwrap();
-        delay.delay_ms(500u32);
+        delay.delay_ms(1000u32);
     }
 }
