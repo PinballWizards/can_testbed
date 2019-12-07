@@ -7,6 +7,9 @@ extern crate embedded_hal;
 extern crate feather_m0 as hal;
 extern crate panic_halt;
 
+#[macro_use]
+extern crate nb;
+
 use hal::clock::GenericClockController;
 use hal::delay::Delay;
 use hal::pac::{CorePeripherals, Peripherals};
@@ -14,12 +17,18 @@ use hal::prelude::*;
 
 use hal::entry;
 
+use embedded_hal::blocking::spi::Write;
+use embedded_hal::spi::FullDuplex;
+
 use mcp2517fd;
 use mcp2517fd::generic::SFRAddress;
+use mcp2517fd::spi;
 
-fn setup_can<T, SS>(controller: &mut mcp2517fd::spi::Controller<T, SS>) -> Result<(), T::Error>
+fn setup_can<T, SS>(
+    controller: &mut mcp2517fd::spi::Controller<T, SS>,
+) -> Result<(), spi::Error<<T as FullDuplex<u8>>::Error, <T as Write<u8>>::Error, u8>>
 where
-    T: embedded_hal::spi::FullDuplex<u8>,
+    T: embedded_hal::spi::FullDuplex<u8> + embedded_hal::blocking::spi::Write<u8>,
     SS: embedded_hal::digital::v2::StatefulOutputPin,
     <SS as embedded_hal::digital::v2::OutputPin>::Error: core::fmt::Debug,
 {
@@ -68,7 +77,7 @@ fn main() -> ! {
 
     let mut pins = hal::Pins::new(peripherals.PORT);
 
-    let master = hal::spi_master(
+    let mut master = hal::spi_master(
         &mut clocks,
         1.mhz(),
         peripherals.SERCOM4,
@@ -79,7 +88,8 @@ fn main() -> ! {
         &mut pins.port,
     );
 
-    let d6 = pins.d6.into_push_pull_output(&mut pins.port);
+    let mut d6 = pins.d6.into_push_pull_output(&mut pins.port);
+    d6.set_high().unwrap();
 
     let mut d11 = pins.d11.into_push_pull_output(&mut pins.port);
     d11.set_low().unwrap();
@@ -88,10 +98,50 @@ fn main() -> ! {
 
     let mut controller = mcp2517fd::spi::Controller::new(master, d6);
 
-    match setup_can(&mut controller) {
+    /*match setup_can(&mut controller) {
         Ok(_) => d11.set_high().unwrap(),
         Err(_) => d12.set_high().unwrap(),
-    };
+    };*/
 
-    loop {}
+    let mut delay = Delay::new(core.SYST, &mut clocks);
+
+    // loop {
+    //     d6.set_low().unwrap();
+    //     match master.write(&[0b0101_0101 as u8; 1]) {
+    //         Ok(_) => {
+    //             d11.set_high().unwrap();
+    //             d12.set_low().unwrap();
+    //         }
+    //         Err(_) => {
+    //             d12.set_high().unwrap();
+    //             d11.set_low().unwrap();
+    //         }
+    //     };
+    //     d6.set_high().unwrap();
+    //     delay.delay_ms(500u32);
+    //     d11.set_low().unwrap();
+    //     d12.set_low().unwrap();
+    //     delay.delay_ms(500u32);
+    // }
+
+    loop {
+        match controller.write_sfr(
+            &SFRAddress::IOCON,
+            0b0101_0101_0101_0101_0101_0101_0101_0101 as u32,
+        ) {
+            Ok(_) => {
+                d11.set_high().unwrap();
+                d12.set_low().unwrap();
+            }
+            Err(_) => {
+                d12.set_high().unwrap();
+                d11.set_low().unwrap();
+            }
+        }
+
+        delay.delay_ms(500u32);
+        d11.set_low().unwrap();
+        d12.set_low().unwrap();
+        delay.delay_ms(500u32);
+    }
 }
