@@ -157,19 +157,47 @@ fn main() -> ! {
         (0b00000011_00000011_00000011_00000000 as u32),
     ];
 
-    // match controller.write_sfr(&SFRAddress::IOCON, data[3]) {
-    //     Ok(_) => {
-    //         d11.set_high().unwrap();
-    //         d12.set_low().unwrap();
-    //     }
-    //     Err(_) => {
-    //         d12.set_high().unwrap();
-    //         d11.set_low().unwrap();
-    //     }
-    // };
+    // Let's do GPIO first
+    let mut osc = match controller.read_sfr(&SFRAddress::OSC) {
+        Ok(val) => val,
+        Err(_) => 0,
+    };
+
+    delay.delay_ms(1000u32);
+    // Masks all configuration bits for OSC register
+    osc |= 0b000_0000;
+    let _ = controller.write_sfr(&SFRAddress::OSC, osc);
+
+    delay.delay_ms(1000u32);
+    // Wait for oscillator to give status ready
+    while (osc & (1 << 10)) == 0 {
+        osc = match controller.read_sfr(&SFRAddress::OSC) {
+            Ok(val) => val,
+            Err(_) => 0,
+        };
+        delay.delay_ms(1000u32);
+    }
+
+    delay.delay_ms(1000u32);
 
     loop {
-        match controller.read_sfr(&SFRAddress::C1CON) {
+        // match controller.write_sfr(&SFRAddress::IOCON, data[3]) {
+        //     Ok(_) => {
+        //         d11.set_high().unwrap();
+        //         d12.set_low().unwrap();
+        //     }
+        //     Err(_) => {
+        //         d12.set_high().unwrap();
+        //         d11.set_low().unwrap();
+        //     }
+        // };
+
+        // delay.delay_ms(1000u32);
+        // d11.set_low().unwrap();
+        // d12.set_low().unwrap();
+        // delay.delay_ms(1000u32);
+
+        match controller.read_sfr(&SFRAddress::IOCON) {
             Ok(_) => {
                 d11.set_high().unwrap();
                 d12.set_low().unwrap();
@@ -185,4 +213,22 @@ fn main() -> ! {
         d12.set_low().unwrap();
         delay.delay_ms(1000u32);
     }
+
+    // loop {
+    //     match controller.read_sfr(&SFRAddress::C1CON) {
+    //         Ok(_) => {
+    //             d11.set_high().unwrap();
+    //             d12.set_low().unwrap();
+    //         }
+    //         Err(_) => {
+    //             d12.set_high().unwrap();
+    //             d11.set_low().unwrap();
+    //         }
+    //     }
+
+    //     delay.delay_ms(1000u32);
+    //     d11.set_low().unwrap();
+    //     d12.set_low().unwrap();
+    //     delay.delay_ms(1000u32);
+    // }
 }
