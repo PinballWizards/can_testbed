@@ -1,14 +1,9 @@
-# BaseFeatherM0
-Repo with the minimum requirements for building a Rust crate for the Feather M0
+# can-testbed
 
-## Getting Started
+This repo is being used for comms testing with the mcp2517fd CAN controller.
 
-If you haven't already, install cargo-generate with:
-```
-cargo install cargo-generate
-```
+## Setup
 
-Then, generate a new project from this template with:
-```
-cargo generate --git https://github.com/PinballWizards/BaseFeatherM0.git --name my_feather_project
-```
+* Install `cargo install --git https://github.com/sajattack/uf2conv-rs`
+* Run the make file `make`
+* Drag and drop the new "flash.uf2" file onto the feather m0 when it's in bootloader mode.
