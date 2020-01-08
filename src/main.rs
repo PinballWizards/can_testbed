@@ -25,21 +25,31 @@ use mcp2517fd::spi;
 
 fn setup_can<T, SS>(
     controller: &mut mcp2517fd::spi::Controller<T, SS>,
+    delay: &mut Delay,
 ) -> Result<(), spi::Error<<T as Transfer<u8>>::Error, <T as Write<u8>>::Error, u8>>
 where
     T: Transfer<u8> + Write<u8>,
     SS: embedded_hal::digital::v2::StatefulOutputPin,
     <SS as embedded_hal::digital::v2::OutputPin>::Error: core::fmt::Debug,
 {
+    // Reset first in case we f things up
+    controller.reset()?;
+
+    controller.write_sfr(&SFRAddress::C1CON, 1 << 26)?;
+    controller.read_sfr(&SFRAddress::C1CON)?;
+
     // Let's do GPIO first
     let mut osc = controller.read_sfr(&SFRAddress::OSC)?;
     // Masks all configuration bits for OSC register
     osc |= 0b000_0000;
     let _ = controller.write_sfr(&SFRAddress::OSC, osc)?;
 
+    delay.delay_ms(10000u32);
+
     // Wait for oscillator to give status ready
     while (osc & (1 << 10)) == 0 {
         osc = controller.read_sfr(&SFRAddress::OSC)?;
+        delay.delay_ms(1000u32);
     }
 
     let mut iocon = controller.read_sfr(&SFRAddress::IOCON)?;
@@ -51,17 +61,19 @@ where
     iocon |= 1 << 8;
     iocon |= 1 << 9;
 
-    iocon |= 1 << 16;
-    iocon |= 1 << 17;
-
     // PM0/1 set as GPIO
     iocon |= 1 << 24;
     iocon |= 1 << 25;
 
     // Ensure interrupt pins are in push/pull mode
     iocon &= !(1 << 30);
-
     controller.write_sfr(&SFRAddress::IOCON, iocon)?;
+    let newval = controller.read_sfr(&SFRAddress::IOCON)?;
+
+    delay.delay_ms(5000u32);
+    controller.read_sfr(&SFRAddress::C1CON)?;
+
+    loop {}
 
     Ok(())
 }
@@ -110,92 +122,24 @@ fn main() -> ! {
     // Keeping this delay here so slave select can go high.
     delay.delay_ms(100u32);
 
-    // loop {
-    //     d6.set_low().unwrap();
-    //     match master.write(&[0b0101_0101 as u8; 1]) {
-    //         Ok(_) => {
-    //             d11.set_high().unwrap();
-    //             d12.set_low().unwrap();
-    //         }
-    //         Err(_) => {
-    //             d12.set_high().unwrap();
-    //             d11.set_low().unwrap();
-    //         }
-    //     };
-    //     d6.set_high().unwrap();
-    //     delay.delay_ms(500u32);
-    //     d11.set_low().unwrap();
-    //     d12.set_low().unwrap();
-    //     delay.delay_ms(500u32);
-    // }
-
-    // loop {
-    //     match controller.write_sfr(
-    //         &SFRAddress::IOCON,
-    //         0b0101_0101_0101_0101_0101_0101_0101_0101 as u32,
-    //     ) {
-    //         Ok(_) => {
-    //             d11.set_high().unwrap();
-    //             d12.set_low().unwrap();
-    //         }
-    //         Err(_) => {
-    //             d12.set_high().unwrap();
-    //             d11.set_low().unwrap();
-    //         }
-    //     }
-
-    //     delay.delay_ms(500u32);
-    //     d11.set_low().unwrap();
-    //     d12.set_low().unwrap();
-    //     delay.delay_ms(500u32);
-    // }
-
-    let data = [
-        (0b00000011_00000011_00000000_00000000 as u32),
-        (0b00000011_00000011_00000001_00000000 as u32),
-        (0b00000011_00000011_00000010_00000000 as u32),
-        (0b00000011_00000011_00000011_00000000 as u32),
-    ];
-
-    // Let's do GPIO first
-    let mut osc = match controller.read_sfr(&SFRAddress::OSC) {
-        Ok(val) => val,
-        Err(_) => 0,
-    };
-
-    delay.delay_ms(1000u32);
-    // Masks all configuration bits for OSC register
-    osc |= 0b000_0000;
-    let _ = controller.write_sfr(&SFRAddress::OSC, osc);
-
-    delay.delay_ms(1000u32);
-    // Wait for oscillator to give status ready
-    while (osc & (1 << 10)) == 0 {
-        osc = match controller.read_sfr(&SFRAddress::OSC) {
-            Ok(val) => val,
-            Err(_) => 0,
-        };
-        delay.delay_ms(1000u32);
-    }
-
-    delay.delay_ms(1000u32);
+    let _ = setup_can(&mut controller, &mut delay);
 
     loop {
-        // match controller.write_sfr(&SFRAddress::IOCON, data[3]) {
-        //     Ok(_) => {
-        //         d11.set_high().unwrap();
-        //         d12.set_low().unwrap();
-        //     }
-        //     Err(_) => {
-        //         d12.set_high().unwrap();
-        //         d11.set_low().unwrap();
-        //     }
-        // };
+        match controller.read_sfr(&SFRAddress::OSC) {
+            Ok(_) => {
+                d11.set_high().unwrap();
+                d12.set_low().unwrap();
+            }
+            Err(_) => {
+                d12.set_high().unwrap();
+                d11.set_low().unwrap();
+            }
+        }
 
-        // delay.delay_ms(1000u32);
-        // d11.set_low().unwrap();
-        // d12.set_low().unwrap();
-        // delay.delay_ms(1000u32);
+        delay.delay_ms(1000u32);
+        d11.set_low().unwrap();
+        d12.set_low().unwrap();
+        delay.delay_ms(1000u32);
 
         match controller.read_sfr(&SFRAddress::IOCON) {
             Ok(_) => {
