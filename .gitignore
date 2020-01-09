@@ -17,3 +17,6 @@ Cargo.lock
 !.vscode/launch.json
 !.vscode/extensions.json
 *.code-workspace
+
+# Build files
+*.uf2
