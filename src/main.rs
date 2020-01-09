@@ -26,7 +26,7 @@ use mcp2517fd::spi;
 fn setup_can<T, SS>(
     controller: &mut mcp2517fd::spi::Controller<T, SS>,
     delay: &mut Delay,
-) -> Result<(), spi::Error<<T as Transfer<u8>>::Error, <T as Write<u8>>::Error, u8>>
+) -> Result<(), spi::Error>
 where
     T: Transfer<u8> + Write<u8>,
     SS: embedded_hal::digital::v2::StatefulOutputPin,
