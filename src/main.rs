@@ -32,48 +32,72 @@ where
     SS: embedded_hal::digital::v2::StatefulOutputPin,
     <SS as embedded_hal::digital::v2::OutputPin>::Error: core::fmt::Debug,
 {
-    // Reset first in case we f things up
     controller.reset()?;
 
-    controller.write_sfr(&SFRAddress::C1CON, 1 << 26)?;
-    controller.read_sfr(&SFRAddress::C1CON)?;
-
     // Let's do GPIO first
-    let mut osc = controller.read_sfr(&SFRAddress::OSC)?;
-    // Masks all configuration bits for OSC register
-    osc |= 0b000_0000;
-    let _ = controller.write_sfr(&SFRAddress::OSC, osc)?;
 
-    delay.delay_ms(10000u32);
+    // Masks all configuration bits for OSC register
+    // Use system clock with no PLL
+    let mut osc = 0;
+    // Enable system clock (wake from sleep)
+    osc &= !(1 << 2);
+
+    // Set up 10x CLKO divider
+    osc |= 0b11 << 5;
+
+    controller.write_sfr(&SFRAddress::OSC, osc)?;
+
+    delay.delay_ms(5000u32);
+
+    // Mask waiting for OSCRDY
+    let osc_ready_mask = 1 << 10;
 
     // Wait for oscillator to give status ready
-    while (osc & (1 << 10)) == 0 {
-        osc = controller.read_sfr(&SFRAddress::OSC)?;
+    osc = controller.read_sfr(&SFRAddress::OSC)?;
+    while (osc & osc_ready_mask) != osc_ready_mask {
         delay.delay_ms(1000u32);
+        osc = controller.read_sfr(&SFRAddress::OSC)?;
     }
 
     let mut iocon = controller.read_sfr(&SFRAddress::IOCON)?;
-    // TRIS0/1 set GPIO0/1 as output
-    iocon &= !(1 << 0);
-    iocon &= !(1 << 1);
+    // Set TRIS registers for output
+    iocon &= !(0b11);
 
-    // LAT0/1 set as latched
-    iocon |= 1 << 8;
-    iocon |= 1 << 9;
+    let lat_mask = 0b11 << 8;
 
-    // PM0/1 set as GPIO
-    iocon |= 1 << 24;
-    iocon |= 1 << 25;
+    // Set LAT registers
+    iocon |= lat_mask;
 
-    // Ensure interrupt pins are in push/pull mode
-    iocon &= !(1 << 30);
     controller.write_sfr(&SFRAddress::IOCON, iocon)?;
-    let newval = controller.read_sfr(&SFRAddress::IOCON)?;
 
-    delay.delay_ms(5000u32);
-    controller.read_sfr(&SFRAddress::C1CON)?;
+    // Jump to normal mode
+    let internal_loopback = 0b010;
+    let mut c1con = controller.read_sfr(&SFRAddress::C1CON)?;
 
-    loop {}
+    let set_internal_loopback = |mut c1con: u32| -> u32 {
+        c1con |= internal_loopback << 24;
+        c1con &= !((!internal_loopback) << 24);
+        c1con
+    };
+    controller.write_sfr(&SFRAddress::C1CON, set_internal_loopback(c1con))?;
+    c1con = controller.read_sfr(&SFRAddress::C1CON)?;
+    while c1con & (internal_loopback << 21) != (internal_loopback << 21) {
+        delay.delay_ms(1000u32);
+        controller.write_sfr(&SFRAddress::C1CON, set_internal_loopback(c1con))?;
+        c1con = controller.read_sfr(&SFRAddress::C1CON)?;
+        controller.read_sfr(&SFRAddress::C1TREC)?;
+        controller.read_sfr(&SFRAddress::C1BDIAG0)?;
+        controller.read_sfr(&SFRAddress::C1BDIAG1)?;
+    }
+
+    loop {
+        iocon = controller.read_sfr(&SFRAddress::IOCON)?;
+        delay.delay_ms(1000u32);
+
+        if iocon & lat_mask != lat_mask {
+            controller.write_sfr(&SFRAddress::IOCON, iocon | lat_mask)?;
+        }
+    }
 
     Ok(())
 }
@@ -91,9 +115,9 @@ fn main() -> ! {
 
     let mut pins = hal::Pins::new(peripherals.PORT);
 
-    let mut master = hal::spi_master(
+    let master = hal::spi_master(
         &mut clocks,
-        1.mhz(),
+        200.khz(),
         peripherals.SERCOM4,
         &mut peripherals.PM,
         pins.sck,
@@ -118,9 +142,6 @@ fn main() -> ! {
     // };
 
     let mut delay = Delay::new(core.SYST, &mut clocks);
-
-    // Keeping this delay here so slave select can go high.
-    delay.delay_ms(100u32);
 
     let _ = setup_can(&mut controller, &mut delay);
 
