@@ -15,7 +15,7 @@ nb = "~0.1"
 mcp2517fd = { git = "https://github.com/PinballWizards/mcp2517fd.git", branch = "master" }
 
 [dependencies.feather_m0]
-version = "~0.5"
+version = "~0.6"
 features = ["default", "unproven"]
 
 [profile.release]
